@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orçamento de Peças Automotivas</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        /* Reset básico */
+        body, html { margin: 0; padding: 0; font-family: 'Arial', sans-serif; background-color: #f4f4f4; }
+        
+        /* Container principal */
+        .container { max-width: 100%; margin: 0; padding: 20px; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        
+        /* Título */
+        h2 { text-align: center; color: #333; margin-bottom: 20px; font-size: 24px; }
+        
+        /* Inputs e selects */
+        label { font-weight: bold; display: block; margin-top: 10px; color: #555; }
+        select, input { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #ddd; font-size: 16px; }
+        
+        /* Botões */
+        button { width: 100%; padding: 14px; margin: 10px 0; border-radius: 8px; border: none; background-color: #007BFF; color: white; font-size: 16px; cursor: pointer; transition: background-color 0.3s; }
+        button:hover { background-color: #0056b3; }
+        
+        /* Tabela de peças */
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #007BFF; color: white; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        tr:hover { background-color: #f1f1f1; }
+        
+        /* Checkbox personalizado */
+        input[type="checkbox"] { width: 20px; height: 20px; margin: 0; }
+        
+        /* Cabeçalho do PDF */
+        .pdf-header { background-color: #007BFF; color: white; padding: 10px; text-align: center; border-radius: 8px; margin-bottom: 20px; }
+        
+        /* Responsividade */
+        @media (max-width: 600px) {
+            h2 { font-size: 20px; }
+            select, input, button { font-size: 14px; padding: 10px; }
+            th, td { padding: 8px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Orçamento de Peças Automotivas</h2>
+
+    <label>Marca:</label>
+    <select id="marca" onchange="carregarModelos()"></select>
+
+    <label>Modelo:</label>
+    <select id="modelo" onchange="carregarAnos()"></select>
+
+    <label>Ano:</label>
+    <select id="ano"></select>
+
+    <label>Peça desejada:</label>
+    <input type="text" id="peca" placeholder="Exemplo: Pastilha de freio">
+
+    <label>Preço mínimo (R$):</label>
+    <input type="number" id="precoMin" placeholder="0">
+
+    <label>Preço máximo (R$):</label>
+    <input type="number" id="precoMax" placeholder="5000">
+
+    <button onclick="buscarPecas()">Buscar Peças</button>
+
+    <h3>Peças Disponíveis</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Nome</th>
+                <th>Preço</th>
+                <th>Selecionar</th>
+            </tr>
+        </thead>
+        <tbody id="pecas-lista"></tbody>
+    </table>
+
+    <button onclick="gerarPDF()">Gerar PDF</button>
+    Sistema criado por: Washingthon Eudes
+</div>
+
+<script>
+    async function carregarMarcas() {
+        let response = await fetch("https://parallelum.com.br/fipe/api/v1/carros/marcas");
+        let marcas = await response.json();
+        let select = document.getElementById("marca");
+        select.innerHTML = "<option value=''>Selecione</option>";
+        marcas.forEach(marca => {
+            select.innerHTML += `<option value="${marca.codigo}">${marca.nome}</option>`;
+        });
+    }
+
+    async function carregarModelos() {
+        let marcaId = document.getElementById("marca").value;
+        if (!marcaId) return;
+        let response = await fetch(`https://parallelum.com.br/fipe/api/v1/carros/marcas/${marcaId}/modelos`);
+        let data = await response.json();
+        let select = document.getElementById("modelo");
+        select.innerHTML = "<option value=''>Selecione</option>";
+        data.modelos.forEach(modelo => {
+            select.innerHTML += `<option value="${modelo.codigo}">${modelo.nome}</option>`;
+        });
+    }
+
+    async function carregarAnos() {
+        let marcaId = document.getElementById("marca").value;
+        let modeloId = document.getElementById("modelo").value;
+        if (!modeloId) return;
+        let response = await fetch(`https://parallelum.com.br/fipe/api/v1/carros/marcas/${marcaId}/modelos/${modeloId}/anos`);
+        let anos = await response.json();
+        let select = document.getElementById("ano");
+        select.innerHTML = "<option value=''>Selecione</option>";
+        anos.forEach(ano => {
+            select.innerHTML += `<option value="${ano.codigo}">${ano.nome}</option>`;
+        });
+    }
+
+    async function buscarPecas() {
+        let modelo = document.getElementById("modelo").selectedOptions[0].text;
+        let pecaDesejada = document.getElementById("peca").value.trim();
+        let precoMin = document.getElementById("precoMin").value;
+        let precoMax = document.getElementById("precoMax").value;
+        
+        if (!pecaDesejada) {
+            alert("Por favor, insira a peça desejada.");
+            return;
+        }
+
+        let query = encodeURIComponent(`${pecaDesejada} ${modelo}`);
+        let response = await fetch(`https://api.mercadolibre.com/sites/MLB/search?q=${query}`);
+        let data = await response.json();
+        let tbody = document.getElementById("pecas-lista");
+        tbody.innerHTML = "";
+
+        data.results
+            .filter(peca => (!precoMin || peca.price >= precoMin) && (!precoMax || peca.price <= precoMax))
+            .slice(0, 100)
+            .forEach(peca => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${peca.title}</td>
+                        <td>R$ ${peca.price.toFixed(2)}</td>
+                        <td><input type="checkbox" data-title="${peca.title}" data-price="${peca.price}" data-link="${peca.permalink}" data-seller="${peca.seller.permalink}"></td>
+                    </tr>`;
+            });
+    }
+
+    function gerarPDF() {
+        let { jsPDF } = window.jspdf;
+        let doc = new jsPDF();
+        
+        // Cabeçalho do PDF
+        doc.setFontSize(18);
+        doc.setTextColor(255, 255, 255);
+        doc.setFillColor(0, 123, 255);
+        doc.rect(0, 0, 210, 20, 'F');
+        doc.text("Orçamento Realizado", 10, 15);
+
+        // Conteúdo do PDF
+        doc.setFontSize(12);
+        doc.setTextColor(0, 0, 0);
+        let y = 30;
+        
+        document.querySelectorAll("input[type=checkbox]:checked").forEach(item => {
+            let title = item.getAttribute("data-title");
+            let price = item.getAttribute("data-price");
+            let link = item.getAttribute("data-link");
+            let seller = item.getAttribute("data-seller");
+
+            doc.text(`Peça: ${title}`, 10, y);
+            doc.text(`Preço: R$ ${parseFloat(price).toFixed(2)}`, 10, y + 10);
+            doc.text(`Link: ${link}`, 10, y + 20);
+            doc.text(`Vendedor: ${seller}`, 10, y + 30);
+            y += 40;
+        });
+
+        doc.save("orçamento.pdf");
+    }
+
+    carregarMarcas();
+</script>
+
+</body>
+</html>
